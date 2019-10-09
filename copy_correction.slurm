@@ -1,3 +1,4 @@
+# Copies and renames the correction files to the merged directory
 output_directory=$1
 find $output_directory/*/correction -name correction.root -type f \
 | while read line; do
