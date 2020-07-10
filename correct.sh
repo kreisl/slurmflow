@@ -41,6 +41,7 @@ HEADER
 
 ################################################################################
 # Submits a correction job array and a merging job
+#    -p debug -t 0:10:0 \
 # Globals:
 #  script_directory
 #  output_directory
@@ -70,25 +71,20 @@ function submit_job() {
   fi
   mkdir -p ${run_directory}/logs
   mkdir -p ${run_directory}/data
-  mkdir -p ${run_directory}/correction
-  local correction_file=$output_directory/merged/correction_${run_number}.root
-  echo $correction_file
+  local correction_file=$output_directory/merged/oadb.root
   local task_id_run=$(sbatch --parsable -J ${run_number} \
-    -o ${run_directory}/logs/correct-%A_%a.out \
-    -e ${run_directory}/logs/correct-%A_%a.out --array=1-$number \
-    $run_script $script_directory \
+    -o ${run_directory}/logs/correct-%A_%a_%j.out \
+    --array=1-$number -- $run_script $script_directory \
                 $run_directory \
                 $run_list \
                 $chunks_per_job \
                 $correction_file \
                 $add_task \
-                )
-  task_id_merge="$task_id_merge:$(sbatch --parsable \
-    --dependency afterany:${task_id_run} -J ${run_number}_merge \
-    -o ${run_directory}/logs/merge-%A.out \
-    -e ${run_directory}/logs/merge-%A.out \
-    ${merge_script} ${run_directory} \
-    )"
+  )
+   task_id_merge="$task_id_merge:$(sbatch --parsable \
+     --dependency afterany:${task_id_run} -J ${run_number}_merge \
+     -o ${run_directory}/logs/merge-%A_%j.out -- ${merge_script} ${run_directory} \
+   )"
 }
 
 ################################################################################
@@ -128,7 +124,6 @@ function main() {
   mkdir -p ${script_directory}/generated
   prepend_slurm_settings ${script_directory}/create_correction.slurm
   prepend_slurm_settings ${script_directory}/merge_correction.slurm
-  prepend_slurm_settings ${script_directory}/copy_correction.slurm
   # Create output directories
   mkdir -p ${output_directory}/config
   mkdir -p ${output_directory}/merged
@@ -145,13 +140,6 @@ function main() {
     mkdir -p ${output_directory}/${run_number}
     submit_job ${line} ${run_number}
   done < "$input"
-  # Copies the correction files to the input directory for the next iteration
-  local copy_script=${script_directory}/generated/copy_correction_settings.slurm
-  merging_ids=${task_id_merge##:}
-  sbatch --dependency afterany:$merging_ids -J copying_correction_files \
-    -o ${output_directory}/merged/copy-%A.out \
-    -e ${output_directory}/merged/copy-%A.out \
-    ${copy_script} ${output_directory}
 }
 
 main "$@"
